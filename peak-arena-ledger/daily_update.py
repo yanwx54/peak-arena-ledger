@@ -14,6 +14,8 @@
 import argparse
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
 
@@ -65,6 +67,37 @@ def find_lark_cli():
     return None
 
 
+# ---------- 数据保护 ----------
+# 抓取链路有一个致命失效模式：Cloudflare 验证没过时，枚举会返回 0 篇文章，
+# 而 list_articles.py / extract_jd.py 会直接把空结果覆盖掉好数据。
+# 因此每轮开始前备份关键中间产物，一旦拿到 0 就回滚并中止。
+BACKUP = os.path.join(HERE, "data", ".backup")
+GUARDED = ("articles_list.json", "jd_records.json")
+
+
+def backup_data():
+    os.makedirs(BACKUP, exist_ok=True)
+    for name in GUARDED:
+        src = os.path.join(HERE, "data", name)
+        if os.path.exists(src):
+            shutil.copy2(src, os.path.join(BACKUP, name))
+
+
+def restore_data():
+    for name in GUARDED:
+        src = os.path.join(BACKUP, name)
+        if os.path.exists(src):
+            shutil.copy2(src, os.path.join(HERE, "data", name))
+
+
+def guarded_count(path):
+    """读一个 JSON 数组文件的元素个数；文件不存在或损坏返回 -1。"""
+    try:
+        return len(json.load(open(path, encoding="utf-8")))
+    except Exception:
+        return -1
+
+
 def git(args, check=True):
     p = subprocess.run(["git", "-C", ROOT] + args, capture_output=True, text=True,
                        encoding="utf-8", errors="replace")
@@ -90,15 +123,32 @@ def main():
         log("  ✓ cookie 已更新")
 
     # ---------- 2~5. 抓取与解析 ----------
+    backup_data()
+    before_articles = guarded_count(os.path.join(HERE, "data", "articles_list.json"))
+
     out = run([sys.executable, "list_articles.py"], label="枚举文章列表")
     for line in out.strip().splitlines()[-3:]:
         log("  " + line)
+    m = re.search(r"TOTAL unique articles:\s*(\d+)", out)
+    n_articles = int(m.group(1)) if m else -1
+    if n_articles <= 0:
+        restore_data()
+        raise RuntimeError(
+            "文章枚举得到 %d 篇（上一轮为 %d 篇），疑似 Cloudflare 验证未通过。"
+            "已回滚数据并中止，未做任何提交。" % (n_articles, before_articles))
+    if before_articles > 0 and n_articles < before_articles:
+        log("  ! 注意：文章数由 %d 降为 %d，继续执行但请留意" % (before_articles, n_articles))
 
     run([sys.executable, "fetch_all.py"], label="抓取文章正文")
 
     out = run([sys.executable, "extract_jd.py"], label="解析「巅峰赛场」战绩")
     for line in out.strip().splitlines()[:1]:
         log("  " + line)
+    m = re.search(r"records:\s*(\d+)", out)
+    n_records = int(m.group(1)) if m else -1
+    if n_records <= 0:
+        restore_data()
+        raise RuntimeError("解析得到 0 条记录——已回滚数据并中止，未做任何提交。")
 
     out = run([sys.executable, "build_output.py"], label="生成 CSV / MD / HTML")
     for line in out.strip().splitlines():

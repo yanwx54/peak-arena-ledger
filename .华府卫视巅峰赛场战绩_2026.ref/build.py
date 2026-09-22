@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """生成《华府卫视巅峰赛场战绩（2026年）》xlsx。"""
-import csv, datetime, os
+import csv, datetime, os, re, zipfile
 
 try:
     import openpyxl
@@ -44,6 +44,13 @@ with open(SRC, encoding="utf-8-sig") as f:
 
 wb = Workbook()
 wb.properties.title = TITLE
+# 固定文档时间戳，保证「同样的数据 → 字节完全一致的 xlsx」。
+# 否则每次生成都会内嵌新的 created/modified，导致每日同步在无数据变更时也产生空提交。
+_FIXED_TS = datetime.datetime(2026, 1, 1, 0, 0, 0)
+wb.properties.created = _FIXED_TS
+wb.properties.modified = _FIXED_TS
+wb.properties.creator = "PeakArena Ledger"
+wb.properties.lastModifiedBy = "PeakArena Ledger"
 
 # ---------- Sheet 1: 战绩明细 ----------
 ws = wb.active
@@ -115,5 +122,32 @@ for i, (k, v) in enumerate(notes):
     b = ws2.cell(row=r, column=2, value=v)
     b.alignment = Alignment(vertical="top", wrap_text=True)
 
+_FIXED_ZIP_DT = (2026, 1, 1, 0, 0, 0)
+_FIXED_ISO = "2026-01-01T00:00:00Z"
+
+
+def freeze_xlsx(path):
+    """把 xlsx 内的所有时间戳冻结成固定值。
+
+    openpyxl 保存时会把 docProps/core.xml 的 dcterms:modified 写成当前时间，
+    zip 条目也各自带生成时刻，导致「数据没变、文件字节却变了」。
+    每日同步据此判断有无变更，因此必须让同样数据产出字节一致的产物。
+    """
+    tmp = path + ".tmp"
+    with zipfile.ZipFile(path) as zin, zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "docProps/core.xml":
+                data = re.sub(
+                    rb"<dcterms:modified[^>]*>[^<]*</dcterms:modified>",
+                    ('<dcterms:modified xsi:type="dcterms:W3CDTF">%s</dcterms:modified>'
+                     % _FIXED_ISO).encode("utf-8"),
+                    data)
+            item.date_time = _FIXED_ZIP_DT
+            zout.writestr(item, data)
+    os.replace(tmp, path)
+
+
 wb.save(OUT)
+freeze_xlsx(OUT)
 print("saved:", OUT, "rows:", len(rows))

@@ -10,6 +10,9 @@ peak-arena-ledger/data/articles/
 # ===== 部署 / 上传配置（含飞书内部 token，不入库）=====
 deploy/
 
+# ===== 抓取中间产物的轮转备份（daily_update.py 用于失败回滚）=====
+peak-arena-ledger/data/.backup/
+
 # ===== Python =====
 __pycache__/
 *.py[cod]
