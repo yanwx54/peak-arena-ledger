@@ -30,7 +30,7 @@ ROOT = os.path.dirname(HERE)                               # <repo>
 CSV = os.path.join(HERE, "output", "巅峰赛场战绩_2026.csv")
 XLSX = os.path.join(ROOT, "华府卫视巅峰赛场战绩_2026.xlsx")
 FEISHU_CFG = os.path.join(ROOT, "deploy", "feishu.json")
-XLSX_BUILDER = os.path.join(ROOT, ".华府卫视巅峰赛场战绩_2026.ref", "build.py")
+XLSX_BUILDER = os.path.join(ROOT, "xlsx-builder", "build.py")
 
 # lark-cli 由 WorkBuddy 飞书 connector 提供，位置随版本变动，按候选路径探测
 LARK_CLI_CANDIDATES = [

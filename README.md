@@ -36,7 +36,7 @@
 ├── 华府卫视巅峰赛场战绩_2026.xlsx              # 成果：Excel 台账（主交付物）
 ├── 华府卫视巅峰赛场战绩_2026.html              # 成果：网页版台账
 ├── 华府卫视巅峰赛场战绩_2026.csv               # 成果：CSV（便于二次处理）
-├── .华府卫视巅峰赛场战绩_2026.ref/
+├── xlsx-builder/
 │   └── build.py                               # 生成 xlsx（openpyxl）
 └── peak-arena-ledger/                         # 工程目录（原 jitan/）
     ├── cdp.py                                 # 用本机 Chrome + CDP 过 Cloudflare 验证，取 cookie
@@ -105,7 +105,7 @@ python peak-arena-ledger/extract_jd.py
 python peak-arena-ledger/build_output.py
 
 # 5. 生成 xlsx
-python ".华府卫视巅峰赛场战绩_2026.ref/build.py"
+python xlsx-builder/build.py
 ```
 
 > 注：`cookies.json` 里的 `WXREDIAN` cookie 有效期约 1 天，重跑抓取前需要重新执行第 1 步。
