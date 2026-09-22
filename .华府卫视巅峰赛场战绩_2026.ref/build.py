@@ -13,8 +13,11 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
-SRC = r"C:\Users\yanwx\WorkBuddy AI\2026-09-21-15-51-24\peak-arena-ledger\output\巅峰赛场战绩_2026.csv"
-OUT = r"C:\Users\yanwx\WorkBuddy AI\2026-09-21-15-51-24\华府卫视巅峰赛场战绩_2026.xlsx"
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)  # 仓库根目录（本文件所在目录的上一级）
+
+SRC = os.path.join(ROOT, "peak-arena-ledger", "output", "巅峰赛场战绩_2026.csv")
+OUT = os.path.join(ROOT, "华府卫视巅峰赛场战绩_2026.xlsx")
 TITLE = "华府卫视巅峰赛场战绩（2026年）"
 
 
