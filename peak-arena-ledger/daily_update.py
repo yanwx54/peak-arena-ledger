@@ -101,6 +101,18 @@ def guarded_count(path):
 def git(args, check=True):
     p = subprocess.run(["git", "-C", ROOT] + args, capture_output=True, text=True,
                        encoding="utf-8", errors="replace")
+    # 上一次运行被中断会留下 .git/index.lock，之后所有 git 写操作都会失败。
+    # 只在明确报这个错时清锁并重试一次 —— 不做无条件的自动清理。
+    if p.returncode != 0 and "index.lock" in (p.stderr or ""):
+        lock = os.path.join(ROOT, ".git", "index.lock")
+        if os.path.exists(lock):
+            try:
+                os.remove(lock)
+                log("  ! 发现残留的 .git/index.lock，已清除并重试")
+            except OSError as e:
+                log("  ! 无法删除 index.lock：%s" % e)
+            p = subprocess.run(["git", "-C", ROOT] + args, capture_output=True, text=True,
+                               encoding="utf-8", errors="replace")
     if check and p.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)} 失败: {(p.stderr or '').strip()}")
     return p
