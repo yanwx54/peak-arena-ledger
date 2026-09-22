@@ -7,6 +7,9 @@ peak-arena-ledger/data/cookies.json
 # 重新获取：cdp.py → list_articles.py → fetch_all.py
 peak-arena-ledger/data/articles/
 
+# ===== 部署 / 上传配置（含飞书内部 token，不入库）=====
+deploy/
+
 # ===== Python =====
 __pycache__/
 *.py[cod]
