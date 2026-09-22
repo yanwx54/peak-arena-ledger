@@ -118,3 +118,32 @@ python ".华府卫视巅峰赛场战绩_2026.ref/build.py"
 - **源头缺期不算漏抓**：2 月中旬春节、3/15–3/20、5/26–6/2 等空档，经核对是源头本身当期没推文或当天无「巅峰赛场」，不是解析遗漏。
 - **选手名保留原文**：中英文混用（如 `解冻`、`迷糊`、`侠义`、`爆炸头`）按推文原样记录，未做统一译名。
 - **归档站覆盖**：wxredian 的归档止于 2026-09-20，之后的新期需要重新抓。
+
+## 八、自动化与外部同步
+
+### 每日 10:00 定时更新
+
+一条命令跑完全链路：
+
+```bash
+python peak-arena-ledger/daily_update.py
+```
+
+流程：刷新 wxredian cookie（本机 Chrome 过 Cloudflare）→ 枚举文章 → 抓正文 → 解析战绩
+→ 生成 CSV/MD/HTML → 生成 xlsx → 覆盖上传飞书 → 提交并推送 GitHub。
+
+可选参数：`--skip-cookie`（沿用现有 cookie）、`--skip-feishu`、`--skip-git`。
+没有新数据时不会产生空提交。
+
+> 已配置定时任务每天 10:00 自动执行。
+
+### 飞书同步
+
+台账以**覆盖上传**方式同步到飞书云空间「PeakArena Ledger 战绩台账」文件夹。
+上传时固定传 `--file-token`，因此文件链接恒定，不会每天堆出新文件。
+
+飞书 `folder_token` / `file_token` 存在 `deploy/feishu.json`（已 gitignore，不入库）。
+
+### GitHub
+
+远程：`git@github.com:yanwx54/peak-arena-ledger.git`（SSH）。

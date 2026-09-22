@@ -4,9 +4,22 @@
 微信公众号「鸡坛快迅」《华府卫视战报》→「巅峰赛场」战绩的抓取 + 归档 + 台账工具链。
 
 ## 归档位置
-- **Git 仓库**：`D:\WorkSpace\Project08_peak-arena-ledger`（分支 `main`）
+- **本地仓库**：`D:\WorkSpace\Project08_peak-arena-ledger`（分支 `main`）
+- **GitHub**：https://github.com/yanwx54/peak-arena-ledger （public，远程用 SSH）
 - 原工作区：`C:\Users\yanwx\WorkBuddy AI\2026-09-21-15-51-24`
-- 两处内容一致；**仓库是归档快照**，后续改动记得同步回仓库并提交。
+- 后续改动记得同步回仓库并提交。
+
+## 自动化与外部同步
+- **定时任务**：每天 10:00，自动化 id `78b54c67-529e-4838-8a4a-b2bf27e3dbae`，
+  cwd = 仓库目录，跑 `peak-arena-ledger/daily_update.py`（全链路一条命令）。
+- **飞书**：云空间文件夹「PeakArena Ledger 战绩台账」
+  - folder_token `KqwPfr0srlR6qedsdP9czMfxnng`
+  - 台账 file_token `LiiKbN6PXo9Bk6xxPx0ciuTLnVh`（`--file-token` 覆盖上传，链接恒定）
+  - 配置存 `deploy/feishu.json`（已 gitignore，不入库）
+  - `lark-cli` 路径：`C:\Users\yanwx\.workbuddy\binaries\node\cli-connector-packages\lark-cli.cmd`
+    （注意是 `.workbuddy`，不是 `.workbuddy-ai`）
+- **GitHub 建仓**：WorkBuddy 的 GitHub connector 无建仓权限，需用 `git credential fill`
+  的 token 直连 api.github.com 且**绕过沙箱**。详见技能 `archive-project-to-github`。
 
 ## 数据口径（改动前必确认）
 1. **比赛日 = 战报发布日 − 1 天**（战报标题为「昨日战报」）
