@@ -2,6 +2,11 @@
 # wxredian 会话 cookie，有效期约 1 天；重新抓取前由 peak-arena-ledger/cdp.py 生成
 peak-arena-ledger/data/cookies.json
 
+# ===== 抓取到的文章正文（不入库）=====
+# 第三方内容（微信公众号原文），公开仓库不转载；文件保留在本地。
+# 重新获取：cdp.py → list_articles.py → fetch_all.py
+peak-arena-ledger/data/articles/
+
 # ===== Python =====
 __pycache__/
 *.py[cod]

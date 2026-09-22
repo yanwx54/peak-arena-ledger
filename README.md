@@ -47,9 +47,10 @@
     ├── diag.py                                # 遗漏自检
     ├── harvest.py / fetch_articles.py         # 早期搜狗方案（已废弃，留档）
     ├── data/
-    │   ├── cookies.json                       # wxredian cookie（有效期约 1 天）
-    │   ├── articles_list.json                 # 277 篇文章元数据
-    │   └── articles/<id>.txt                  # 277 篇正文
+    │   ├── cookies.json                       # wxredian cookie（有效期约 1 天）※不入库
+    │   ├── articles_list.json                 # 277 篇文章元数据（含原文链接）
+    │   ├── jd_records.json                    # 解析出的 451 条原始记录
+    │   └── articles/<id>.txt                  # 277 篇正文 ※不入库（第三方内容）
     └── output/                                # 中间产物 CSV / MD / HTML
 ```
 
@@ -109,6 +110,8 @@ python ".华府卫视巅峰赛场战绩_2026.ref/build.py"
 
 > 注：`cookies.json` 里的 `WXREDIAN` cookie 有效期约 1 天，重跑抓取前需要重新执行第 1 步。
 > 解析与输出（第 4、5 步）是纯本地操作，不依赖网络，随时可重跑。
+>
+> **新克隆的仓库里没有 `data/articles/`**（第三方正文不入库），要重跑第 4 步必须先执行第 1–3 步把正文抓回来。
 
 ## 七、已知边界
 
