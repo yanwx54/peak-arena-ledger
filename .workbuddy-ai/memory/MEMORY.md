@@ -32,6 +32,12 @@
 - 脚本一律用 `os.path.dirname(os.path.abspath(__file__))` 定位，**禁止硬编码绝对路径**（换盘符会写回旧目录）。
 - `peak-arena-ledger/data/cookies.json` 是 wxredian 会话凭据（有效期约 1 天），**永远不入库**。
 - 重跑抓取需先跑 `cdp.py` 过 Cloudflare（本机 headful Chrome + CDP）；解析与出表是纯本地操作，不依赖网络。
+- **`cdp.py` 禁止固定 sleep 取 cookie**：wxredian 的 Turnstile 实测要 ~17 秒才通过（曾写死 12s 导致偶发失效），
+  必须轮询到「验证页消失 + 能取到文章链接」再落盘，并用该 cookie 实测校验一次。
+- **抓取类流水线必须防「0 值清空」**：枚举/解析为 0 时覆盖式写盘会毁掉好数据。
+  `daily_update.py` 已实现每轮备份 `data/.backup/` + 0 值回滚中止。
+- **源工作区是权威副本**：仓库侧数据异常时从 `C:\Users\yanwx\WorkBuddy AI\2026-09-21-15-51-24\peak-arena-ledger` 恢复。
+- `build.py` 用 `freeze_xlsx()` 冻结 xlsx 时间戳，保证同样数据产出字节一致，避免每日空提交。
 
 ## 当前数据状态
 - 2026-01-05 ~ 2026-09-18，**204 场**（原始记录 451 条）
