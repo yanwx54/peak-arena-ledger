@@ -29,6 +29,15 @@ HERE = os.path.dirname(os.path.abspath(__file__))          # <repo>/peak-arena-l
 ROOT = os.path.dirname(HERE)                               # <repo>
 CSV = os.path.join(HERE, "output", "巅峰赛场战绩_2026.csv")
 XLSX = os.path.join(ROOT, "华府卫视巅峰赛场战绩_2026.xlsx")
+# 根目录的 CSV / HTML 是 README 里对外声明的交付物，需与 output/ 保持同步。
+# 此前没有任何步骤刷新它们，导致长期停留在旧版本（根 CSV 甚至自建库起就是被
+# 误命名的 xlsx 二进制）。这里显式同步，避免再次腐化。
+ROOT_DELIVERABLES = (
+    (os.path.join(HERE, "output", "巅峰赛场战绩_2026.csv"),
+     os.path.join(ROOT, "华府卫视巅峰赛场战绩_2026.csv")),
+    (os.path.join(HERE, "output", "巅峰赛场战绩_2026.html"),
+     os.path.join(ROOT, "华府卫视巅峰赛场战绩_2026.html")),
+)
 FEISHU_CFG = os.path.join(ROOT, "deploy", "feishu.json")
 XLSX_BUILDER = os.path.join(ROOT, "xlsx-builder", "build.py")
 
@@ -169,6 +178,15 @@ def main():
             result["matches"] = int(line.split(":")[1].strip())
         if line.startswith("date range:"):
             result["latest"] = line.split("~")[-1].strip()
+
+    # ---------- 5b. 同步根目录交付物 ----------
+    log("[步骤] 同步根目录交付物（CSV / HTML）")
+    for src, dst in ROOT_DELIVERABLES:
+        if not os.path.exists(src):
+            log("  ! 源文件缺失，跳过：%s" % src)
+            continue
+        shutil.copy2(src, dst)
+        log("  ✓ %s" % os.path.basename(dst))
 
     # ---------- 6. 生成 xlsx ----------
     out = run([sys.executable, XLSX_BUILDER], cwd=ROOT, label="生成 xlsx 台账")
