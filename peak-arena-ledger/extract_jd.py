@@ -8,8 +8,11 @@ ART = os.path.join(DATA, "articles")
 
 rows = json.load(open(os.path.join(DATA, "articles_list.json"), encoding="utf-8"))
 
-SEC = re.compile(r"【\s*华府卫视[^】]{0,10}战报\s*】")
+# 表头有两种写法：【华府卫视昨日战报】（主流）与【华府昨日战报】（偶有省略「卫视」）
+SEC = re.compile(r"【\s*华府(?:卫视)?[^】]{0,10}战报\s*】")
 ANY_HDR = re.compile(r"【[^】]{0,30}】")
+# 兜底锚点：编号的「巅峰赛场」条目（个别期次整个战报段漏写【】表头）
+ANCHOR = re.compile(r"(?m)^\s*\d+\s*[、\.．,，]\s*巅峰赛场")
 
 NARRATIVE = ("度", "领先", "落后", "拿下", "获胜", "大胜", "险胜", "淘汰", "一度", "开局",
              "扳回", "双方", "比赛", "优势", "反超", "连胜", "连败", "两局", "三局", "四局",
@@ -101,6 +104,19 @@ def parse_section(sec):
     return res
 
 
+def parse_unanchored(text):
+    """兜底：正文里没有【…战报】表头时，直接以编号的「巅峰赛场」条目为锚点解析。
+    仅当正文提到「华府」时启用，避免误收其它栏目。"""
+    if "华府" not in text:
+        return []
+    res = []
+    for m in ANCHOR.finditer(text):
+        nxt = ANY_HDR.search(text, m.end())
+        block = text[m.start():nxt.start() if nxt else len(text)]
+        res += parse_section(block)
+    return res
+
+
 def main():
     out = []
     nofile = []
@@ -117,6 +133,8 @@ def main():
         got = []
         for s in secs:
             got += parse_section(s)
+        if not got:
+            got = parse_unanchored(text)
         if got:
             stats["has_jd"] += 1
         pub = datetime.datetime.strptime(r["date"], "%Y-%m-%d %H:%M")
