@@ -107,6 +107,39 @@ def guarded_count(path):
         return -1
 
 
+def file_md5(path):
+    import hashlib
+    h = hashlib.md5()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def upstream_freshness():
+    """判断上游归档站（wxredian）本轮是否收录了新文章。
+
+    归档站滞后时，枚举结果会与上一轮逐字节相同，台账自然停在旧日期。
+    以前这种情况只表现为「无变更」，容易被误读成脚本漏抓；这里显式区分，
+    并报出归档站最新文章时间，便于定位是上游问题还是抓取问题。
+
+    返回 (是否停滞, 归档站最新文章时间字符串)。
+    """
+    cur = os.path.join(HERE, "data", "articles_list.json")
+    prev = os.path.join(BACKUP, "articles_list.json")
+    newest = ""
+    try:
+        newest = max((a.get("date") or "") for a in json.load(open(cur, encoding="utf-8")))
+    except Exception:
+        pass
+    if not os.path.exists(prev):
+        return False, newest
+    try:
+        return file_md5(cur) == file_md5(prev), newest
+    except Exception:
+        return False, newest
+
+
 def git(args, check=True):
     p = subprocess.run(["git", "-C", ROOT] + args, capture_output=True, text=True,
                        encoding="utf-8", errors="replace")
@@ -134,7 +167,8 @@ def main():
     ap.add_argument("--skip-git", action="store_true")
     args = ap.parse_args()
 
-    result = {"status": "ok", "matches": None, "latest": None, "feishu": None, "git": None}
+    result = {"status": "ok", "matches": None, "latest": None, "feishu": None, "git": None,
+              "upstream": None}
 
     # ---------- 1. 刷新 wxredian cookie ----------
     if args.skip_cookie:
@@ -159,6 +193,14 @@ def main():
             "已回滚数据并中止，未做任何提交。" % (n_articles, before_articles))
     if before_articles > 0 and n_articles < before_articles:
         log("  ! 注意：文章数由 %d 降为 %d，继续执行但请留意" % (before_articles, n_articles))
+
+    stale, newest_art = upstream_freshness()
+    if stale:
+        log("  ! 上游归档站无新增：文章列表与上一轮逐字节一致（最新文章 %s）" % newest_art)
+        log("    → wxredian 尚未收录新文章，本轮不会产生新战绩；这不是抓取失败。")
+        result["upstream"] = "stale"
+    else:
+        result["upstream"] = "updated"
 
     run([sys.executable, "fetch_all.py"], label="抓取文章正文")
 
