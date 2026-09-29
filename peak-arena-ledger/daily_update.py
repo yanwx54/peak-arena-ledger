@@ -140,6 +140,41 @@ def upstream_freshness():
         return False, newest
 
 
+def site_latest_timestamp():
+    """探测归档站「全站最新内容」时间戳（首页热文流）。
+
+    仅凭本号文章列表停滞，无法区分两种完全不同的原因：
+      - 归档站整体停摆 / 被墙  → 等或换源，重跑无用
+      - 仅本号作者页收录滞后    → 站点在正常更新，等一两天即可
+    首页热文流聚合了其它公众号，它的最新时间戳正好可以当判据。
+
+    只在已判定停滞时才调用；任何网络 / 解析异常都返回 None，不影响主流程。
+    """
+    import time
+    import urllib.request
+    try:
+        cookies = json.load(open(os.path.join(HERE, "data", "cookies.json"), encoding="utf-8"))
+        if isinstance(cookies, dict):
+            cookies = cookies.get("cookies", [])
+        ck = "; ".join("%s=%s" % (c.get("name"), c.get("value"))
+                       for c in cookies
+                       if isinstance(c, dict) and "wxredian" in str(c.get("domain", "")))
+        req = urllib.request.Request(
+            "https://wxredian.com/?_cb=%d" % int(time.time()),
+            headers={
+                "Cookie": ck,
+                "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                               "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"),
+                "Cache-Control": "no-cache",
+            })
+        html = urllib.request.urlopen(req, timeout=30).read().decode("utf-8", "ignore")
+        # 首页若返回 ~4KB 的验证页，这里会取不到时间戳 → 返回 None，不误报
+        ds = re.findall(r"20\d\d-\d\d-\d\d \d\d:\d\d", html)
+        return max(ds) if ds else None
+    except Exception:
+        return None
+
+
 def git(args, check=True):
     p = subprocess.run(["git", "-C", ROOT] + args, capture_output=True, text=True,
                        encoding="utf-8", errors="replace")
@@ -168,7 +203,7 @@ def main():
     args = ap.parse_args()
 
     result = {"status": "ok", "matches": None, "latest": None, "feishu": None, "git": None,
-              "upstream": None}
+              "upstream": None, "upstream_site": None}
 
     # ---------- 1. 刷新 wxredian cookie ----------
     if args.skip_cookie:
@@ -197,7 +232,18 @@ def main():
     stale, newest_art = upstream_freshness()
     if stale:
         log("  ! 上游归档站无新增：文章列表与上一轮逐字节一致（最新文章 %s）" % newest_art)
-        log("    → wxredian 尚未收录新文章，本轮不会产生新战绩；这不是抓取失败。")
+        site = site_latest_timestamp()
+        if site:
+            result["upstream_site"] = site
+            # 时间戳格式固定为 YYYY-MM-DD HH:MM，字典序即时间序
+            if newest_art and site > newest_art:
+                log("    · 全站最新内容已到 %s（其它公众号）→ 站点在正常更新，属【本号收录滞后】"
+                    % site)
+            else:
+                log("    · 全站最新内容也仅到 %s → 疑似【归档站整体滞后】" % site)
+        else:
+            log("    · 未能探测全站最新时间戳（网络异常或验证页，可忽略）")
+        log("    → wxredian 尚未收录本号新文章，本轮不会产生新战绩；这不是抓取失败。")
         result["upstream"] = "stale"
     else:
         result["upstream"] = "updated"
