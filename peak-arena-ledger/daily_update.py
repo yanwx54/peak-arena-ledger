@@ -227,7 +227,14 @@ def main():
             "文章枚举得到 %d 篇（上一轮为 %d 篇），疑似 Cloudflare 验证未通过。"
             "已回滚数据并中止，未做任何提交。" % (n_articles, before_articles))
     if before_articles > 0 and n_articles < before_articles:
-        log("  ! 注意：文章数由 %d 降为 %d，继续执行但请留意" % (before_articles, n_articles))
+        drop_pct = round((before_articles - n_articles) / before_articles * 100)
+        if drop_pct >= 20:
+            restore_data()
+            raise RuntimeError(
+                "文章数由 %d 降为 %d（降幅 %d%%），疑似 Cloudflare 验证仅部分通过。"
+                "已回滚数据并中止，未做任何提交。" % (before_articles, n_articles, drop_pct))
+        log("  ! 注意：文章数由 %d 降为 %d（降幅 %d%%），继续执行但请留意"
+            % (before_articles, n_articles, drop_pct))
 
     stale, newest_art = upstream_freshness()
     if stale:
@@ -258,6 +265,13 @@ def main():
     if n_records <= 0:
         restore_data()
         raise RuntimeError("解析得到 0 条记录——已回滚数据并中止，未做任何提交。")
+    before_records = guarded_count(os.path.join(BACKUP, "jd_records.json"))
+    if before_records > 0 and 0 < n_records < before_records * 0.8:
+        restore_data()
+        raise RuntimeError(
+            "战绩记录由 %d 降为 %d（降幅 %.0f%%），疑似抓取不完整。"
+            "已回滚数据并中止，未做任何提交。"
+            % (before_records, n_records, (1 - n_records / before_records) * 100))
 
     out = run([sys.executable, "build_output.py"], label="生成 CSV / MD / HTML")
     for line in out.strip().splitlines():
