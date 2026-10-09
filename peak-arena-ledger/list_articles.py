@@ -45,9 +45,32 @@ def parse_list(h):
     return out
 
 
+def month_cycles(start=(2025, 12), end=None):
+    """从起始月枚举到结束月（含），格式 YYYYMM。
+
+    这里曾经写成 ["202512"] + ["2026%02d" % m for m in range(1, 10)]，
+    即硬编码到 9 月为止。进入 10 月后，10 月的作者页从未被请求，
+    枚举结果与上一轮逐字节相同，脚本会把「漏抓」误报成「上游无新增」，
+    新战绩被静默丢弃。改为按当前月份动态生成，避免再次到期失效。
+    """
+    from datetime import date
+    if end is None:
+        t = date.today()
+        end = (t.year, t.month)
+    out = []
+    y, m = start
+    while (y, m) <= end:
+        out.append("%04d%02d" % (y, m))
+        m += 1
+        if m > 12:
+            y, m = y + 1, 1
+    return out
+
+
 def main():
     allrows = {}
-    cycles = ["202512"] + ["2026%02d" % m for m in range(1, 10)]
+    cycles = month_cycles()
+    print("cycles:", cycles)
     for c in cycles:
         page = 1
         got = 0
