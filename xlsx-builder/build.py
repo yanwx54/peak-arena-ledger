@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """生成《华府卫视巅峰赛场战绩（2026年）》xlsx。"""
-import csv, datetime, json, os, re, zipfile
+import csv, datetime, json, os, re, time, zipfile
 
 try:
     import openpyxl
@@ -165,9 +165,37 @@ def freeze_xlsx(path):
                     data)
             item.date_time = _FIXED_ZIP_DT
             zout.writestr(item, data)
-    os.replace(tmp, path)
+
+
+def commit_tmp(tmp, path):
+    """把冻结后的临时文件落到目标路径。
+
+    台账是给人看的交付物，用户经常用 Excel / WPS 打开着它；此时 Windows 会
+    拒绝 os.replace（WinError 5 拒绝访问），整个流水线会在这里无谓地中止。
+    因此：短暂重试 → 仍失败则退化为直接覆盖写入 → 再失败才报出可操作的提示。
+    """
+    last = None
+    for _ in range(3):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError as e:
+            last = e
+            time.sleep(1.0)
+    try:
+        with open(tmp, "rb") as f:
+            data = f.read()
+        with open(path, "wb") as f:
+            f.write(data)
+        os.remove(tmp)
+        print("  ! 目标文件被占用，已改为直接覆盖写入；建议关闭 Excel/WPS 后重新生成以确认。")
+    except Exception:
+        raise RuntimeError(
+            "无法写入 %s：文件被其它程序占用（通常是 Excel / WPS 正打开着台账）。"
+            "请关闭该文件后重跑。" % path) from last
 
 
 wb.save(OUT)
 freeze_xlsx(OUT)
+commit_tmp(OUT + ".tmp", OUT)
 print("saved:", OUT, "rows:", len(rows))
