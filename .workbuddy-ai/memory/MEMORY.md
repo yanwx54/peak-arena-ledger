@@ -100,7 +100,7 @@
   飞书 version 7694479498871311580，GitHub `5427b3e` → `a6de8e7` 已推送。
 - 2026-10-14 例行更新：224 → **227 场**（至 2026-10-10），新增 3 场
   （10/8 Snow 4:2 Rush、10/9 Bisu 4:2 Speed、10/10 Mini 4:1 Speed）。
-  `upstream=updated`（本号收录滞后结束）；文章 297 → 299。飞书 version 7696409716783631629，
+  `upstream=updated`（本号收录滞后结束）；文章 297 → **300**（10 月 11 篇）。飞书 version 7696409716783631629，
   GitHub `ff16c82` 已推送。
   **首轮失败**：托管解释器 `websocket`/`openpyxl` 再次被重置（10-09 后复发），
   `pip install websocket-client openpyxl` 补装后重跑成功；失败发生在 cookie 步骤前，`data/` 安全。
