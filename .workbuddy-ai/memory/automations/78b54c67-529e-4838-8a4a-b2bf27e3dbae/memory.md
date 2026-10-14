@@ -215,3 +215,25 @@
 
 ### 下次注意
 - 本号收录滞后自 10-08 起，按既有判据继续等待（>3 天才考虑备选数据源），不要重跑。
+
+## 2026-10-14 14:33（首轮失败：托管解释器依赖又被重置 → 补装后跑通）
+
+- **结果**：成功，但**首轮在 cookie 步骤即失败**，补装依赖后重跑一次跑通（6m00s），guard 未触发
+- **首轮失败原因**：托管解释器 `versions/3.13.12/python.exe` 的 `websocket` + `openpyxl` **双双丢失**
+  （与 2026-10-09 同一现象，属运行时被重置）。`cdp.py` 在 `import websocket` 处报
+  `ModuleNotFoundError`，**在 cookie 步骤就中止，`data/` 未被触碰，无需回滚**。
+  处理：`python.exe -m pip install websocket-client openpyxl` → 落到用户级 site-packages
+  `C:\Users\yanwx\AppData\Roaming\Python\Python313`，验证 import 通过后原命令重跑成功。
+- **数据**：224 → **227 场**（2026-01-05 ~ 2026-10-10），新增 3 场
+  （10/8 Snow 4:2 Rush、10/9 Bisu 4:2 Speed、10/10 Mini 4:1 Speed）
+- **上游**：`upstream` = `updated`（归档站恢复收录，10 月文章 8 → 10 篇；`upstream_site` = null）
+- **自检**：`diag.py` A=0 / B=0（has_sec 229 / has_jd 219）
+- **交付物**：根目录 CSV/HTML 已同步；xlsx 227 行
+- **飞书**：覆盖上传成功（version 7696409716783631629，file_token 不变）
+- **GitHub**：`ff16c82`（chore(data): 同步 2026-10-10（共 227 场））已推送，HEAD = origin/main，工作区干净
+
+### 下次注意
+- **托管解释器依赖丢失已成为复发问题**（2026-10-09、2026-10-14 各一次）：
+  若报 `No module named websocket`，直接 `pip install websocket-client openpyxl` 后重跑，
+  不必排查脚本或 Cloudflare；此失败发生在 cookie 步骤之前，`data/` 安全。
+- 本号收录滞后已在 10-14 结束（`upstream` 回到 `updated`），此前 10-09 之后补齐至 10-10。
