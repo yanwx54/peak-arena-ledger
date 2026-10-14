@@ -10,6 +10,35 @@ os.makedirs(OUT, exist_ok=True)
 START = "2026-01-01"
 
 recs = json.load(open(os.path.join(DATA, "jd_records.json"), encoding="utf-8"))
+
+# ---------- 手工补录合并 ----------
+# 上游归档站（wxredian）偶发滞后数天，滞后期间新战绩无法自动获取，台账会停在旧日期。
+# data/manual_records.json 允许把用户从公众号原文读到的「巅峰赛场」条目手工补进来，
+# 使台账不必干等归档站。
+#
+# 只在出表阶段合并（不动 jd_records.json），有两个好处：
+#   1. jd_records.json 始终保持「解析产物」的纯净语义，daily_update.py 里那套
+#      「0 值 / 缩水 20% 即回滚」的保护逻辑完全不受影响；
+#   2. 归档站补收录后，正式解析出的记录与手工条目去重键相同，且解析结果排在前面，
+#      因此正式数据自动优先生效，手工条目自动失效 —— 无需人工清理。
+MANUAL = os.path.join(DATA, "manual_records.json")
+if os.path.exists(MANUAL):
+    try:
+        _m = json.load(open(MANUAL, encoding="utf-8"))
+        _manual = _m.get("records", []) if isinstance(_m, dict) else _m
+        _have = {(r["match_date"], r["p1"], r["score"], r["p2"]) for r in recs}
+        _added = 0
+        for _r in _manual:
+            _k = (_r.get("match_date"), _r.get("p1"), _r.get("score"), _r.get("p2"))
+            if not all(_k) or _k in _have:
+                continue
+            _have.add(_k)
+            recs.append(_r)
+            _added += 1
+        print("manual backfill:", _added)
+    except Exception as _e:
+        print("manual backfill skipped:", _e)
+
 recs = [r for r in recs if r["match_date"] >= START]
 recs.sort(key=lambda r: (r["match_date"], r["p1"]))
 

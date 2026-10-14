@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """生成《华府卫视巅峰赛场战绩（2026年）》xlsx。"""
-import csv, datetime, os, re, zipfile
+import csv, datetime, json, os, re, zipfile
 
 try:
     import openpyxl
@@ -105,14 +105,34 @@ ws2.column_dimensions["B"].width = 92
 ws2["A1"] = "数据说明"
 ws2["A1"].font = Font(size=13, bold=True, color=xl_color("#1F3864"))
 ws2.merge_cells("A1:B1")
+# 统计范围按实际数据动态生成。
+# 此前写死为「2026-01-01 至 2026-09-18」+ 动态场次，随着台账增长，
+# 该行与表格内容自相矛盾（表里已到 10 月，说明却停在 9 月）。
+if rows:
+    _scope = "%s 至 %s，共 %d 场「巅峰赛场」对局。" % (rows[0]["日期"], rows[-1]["日期"], len(rows))
+else:
+    _scope = "暂无数据。"
+
+# 归档站收录滞后期间可能存在人工补录；仅在确有补录时追加说明行。
+_MANUAL = os.path.join(ROOT, "peak-arena-ledger", "data", "manual_records.json")
+try:
+    _m = json.load(open(_MANUAL, encoding="utf-8"))
+    _manual_n = len(_m.get("records", []) if isinstance(_m, dict) else _m)
+except Exception:
+    _manual_n = 0
+
 notes = [
     ("数据来源", "微信公众号「鸡坛快迅」发布的「华府卫视昨日战报」，经 wxredian.com 归档逐篇抓取原文。"),
-    ("统计范围", "2026-01-01 至 2026-09-18，共 %d 场「巅峰赛场」对局。" % len(rows)),
+    ("统计范围", _scope),
     ("日期口径", "战报为次日发布，标题即「昨日战报」，故表中日期 = 战报发布日 − 1 天，即实际比赛日。"),
-    ("抓取范围", "该公众号 2025-12-01 至 2026-09-20 全部 277 篇推文，其中 196 篇含「巅峰赛场」条目。"),
+    ("抓取范围", "该公众号 2025-12 起的历史推文全量抓取，仅统计「华府卫视战报」中「巅峰赛场」条目的对局。"),
     ("说明", "同一日出现两行（如 bo7+bo3）时，为该日安排了两场巅峰赛场对局。"),
-    ("抓取时间", "2026-09-21"),
+    ("数据更新", "由 peak-arena-ledger/daily_update.py 每日自动增量更新；具体变更见仓库提交记录。"),
 ]
+if _manual_n:
+    notes.insert(1, ("人工补录", "其中 %d 条因归档站收录滞后，按公众号原文人工补录"
+                                 "（见 peak-arena-ledger/data/manual_records.json）；"
+                                 "归档站补收录后会自动以解析结果为准。" % _manual_n))
 for i, (k, v) in enumerate(notes):
     r = 3 + i
     a = ws2.cell(row=r, column=1, value=k)
