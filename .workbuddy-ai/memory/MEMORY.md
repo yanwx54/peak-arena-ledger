@@ -73,10 +73,25 @@
   注意不同解释器的 openpyxl 版本会让 xlsx 字节变化（数据不变），非数据问题。
   **已复发**（2026-10-14 再次 `websocket`+`openpyxl` 双缺）：属运行时周期性重置，
   直接 `pip install websocket-client openpyxl` 后重跑即可；该失败在 cookie 步骤前中止，`data/` 安全。
+- **CDP 调试端口不再固定 9222**（2026-10-26 修复）：本机另一个项目
+  `D:\WorkSpace\scplayer-stats` 的残留 Chrome（profile `.sync-chrome`）也用 `--remote-debugging-port=9222`
+  且**不带 `--remote-allow-origins`**，会抢走端口。表现为
+  `WebSocketBadStatusException: Handshake status 403 Forbidden ... Rejected an incoming WebSocket
+  connection from the http://127.0.0.1:9222 origin`。**这不是 Cloudflare、也不是依赖问题。**
+  `cdp.py` 已改为 `_free_port()` 动态取空闲端口（可用 `CDP_PORT` 覆盖），并给
+  `create_connection(..., suppress_origin=True)` 兜底；连接失败时会先 terminate Chrome 再退出。
+- **`ConnectionAbortedError: [WinError 10053]` 属 Chrome 一次性崩溃**（2026-10-26 实测）：
+  发生在轮询等 Turnstile 期间，直接重跑即可。先用 `cdp.py` 单跑区分「脚本问题」与「Chrome 崩了」。
 
 ## 当前数据状态
-- 2026-01-05 ~ **2026-10-19**，**235 场**（原始记录 515 条；含 3 条手工补录）
-- 按月：1月17 / 2月16 / 3月23 / 4月35 / 5月24 / 6月25 / 7月31 / 8月20 / 9月27 / **10月17**
+- 2026-01-05 ~ **2026-10-22**，**238 场**（原始记录 521 条；含 3 条手工补录）
+- 按月：1月17 / 2月16 / 3月23 / 4月35 / 5月24 / 6月25 / 7月31 / 8月20 / 9月27 / **10月20**
+- 2026-10-26 例行更新：235 → **238 场**（至 2026-10-22），新增 10/20 Snow 4:0 Soma、
+  10/21 SPeed 4:3 JD、10/22 Queen 4:2 Bisu；文章 308 → 311；`upstream=updated`；
+  `diag.py` A=0 / B=0；`manual backfill: 0`。
+  飞书 version 7700773234496556284，GitHub `85695eb` 已推送（含 cdp.py 端口修复）。
+  **前两轮失败**：① 9222 端口被 scplayer-stats 残留 Chrome 抢占（403）→ 改动态端口；
+  ② Chrome 中途崩溃（10053）→ 直接重跑成功。待补比赛日 10-23 起（归档站最新 10-23 08:48，滞后约 3 天）。
 - 2026-10-22 例行更新**无净新增**：仍 **235 场**（至 2026-10-19）。`upstream=stale`，
   本号作者页最新文章停在 2026-10-20 07:56，`upstream_site`=2026-10-22 09:32（其它号在更新）
   → **本号收录滞后约 2 天**，非抓取失败。待补比赛日 10-20、10-21。
