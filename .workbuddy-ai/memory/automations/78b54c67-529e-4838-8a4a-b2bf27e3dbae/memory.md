@@ -310,3 +310,31 @@
 - 待补比赛日 10-20、10-21 的战报（需 10-21 / 10-22 发布的文章）。按既有判据（>3 天才考虑备选源）
   继续等待，不要重跑；重跑只多耗一次 Cloudflare 验证。
 - 若下次仍 stale 且已满 3 天（自 10-21 起算），需考虑备选数据源或请用户提供公众号截图手工补录。
+
+## 2026-10-26 08:53（前两轮失败：CDP 端口被占用 + Chrome 崩溃 → 修复后跑通）
+
+- **结果**：第 3 轮成功（2m01s），guard 未触发；前两轮均在 cookie 步骤失败，`data/` 未被触碰
+- **数据**：235 → **238 场**（2026-01-05 ~ 2026-10-22），新增 3 场
+  （10/20 Snow 4:0 Soma、10/21 SPeed 4:3 JD、10/22 Queen 4:2 Bisu）
+- **上游**：`upstream=updated`；文章 308 → 311；records 521；has_sec 241 / has_jd 230；`manual backfill: 0`
+- **自检**：`diag.py` A=0 / B=0
+- **交付物**：根目录 CSV（239 行含表头）/ HTML 已同步；xlsx 238 行
+- **飞书**：覆盖上传成功（version 7700773234496556284，file_token 不变）
+- **GitHub**：`85695eb`（chore(data): 同步 2026-10-22（共 238 场））→ `1eda925`（memory 日志）已推送，
+  HEAD = origin/main，工作区干净
+- **首轮失败（新失效模式）**：`WebSocketBadStatusException: Handshake status 403 Forbidden
+  ... Rejected an incoming WebSocket connection from the http://127.0.0.1:9222 origin`。
+  根因是另一个项目 `D:\WorkSpace\scplayer-stats` 残留的 Chrome（`.sync-chrome`）占着 9222 且不带
+  `--remote-allow-origins`，我们的 Chrome 绑不上端口、`/json` 被对方接管。
+  **已修 `cdp.py`**：改动态空闲端口（`_free_port()`，`CDP_PORT` 可覆盖）+ `suppress_origin=True`
+  + 连接失败先 terminate Chrome。
+- **第二轮失败**：`ConnectionAbortedError: [WinError 10053]`，Chrome 在轮询期间崩溃；
+  单跑 `cdp.py` 正常（24s 通过）后直接重跑即成功。
+
+### 下次注意
+- **CDP 403 ≠ Cloudflare 问题**：先查 9222 是否被别的项目占用（`Get-CimInstance Win32_Process`
+  过滤 `remote-debugging-port`）。端口已改动态，理论上不再复发；若仍 403 说明是 Origin 头问题，
+  `suppress_origin` 已兜底。
+- **10053 连接中断 = Chrome 崩了一次**，直接重跑，不必改代码。
+- 待补比赛日 10-23 起：归档站最新文章 2026-10-23 08:48，滞后约 3 天，按判据等待。
+
