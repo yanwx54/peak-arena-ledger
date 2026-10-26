@@ -13,6 +13,7 @@
 """
 import json
 import os
+import socket
 import subprocess
 import sys
 import time
@@ -27,7 +28,24 @@ except Exception:
 
 CHROME = r"C:\Users\yanwx\AppData\Local\Google\Chrome\Application\chrome.exe"
 PROFILE = r"C:\tmp\cdpprof"
-PORT = 9222
+
+
+def _free_port():
+    """取一个本机空闲端口。
+
+    不能用固定的 9222：本机其它项目（如 scplayer-stats 的 .sync-chrome）也可能开
+    --remote-debugging-port=9222，且未必带 --remote-allow-origins。端口被抢占时
+    本脚本的 Chrome 绑不上，/json 会被对方实例接管，随后 WebSocket 握手 403。
+    """
+    s = socket.socket()
+    try:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+    finally:
+        s.close()
+
+
+PORT = int(os.environ.get("CDP_PORT") or 0) or _free_port()
 AUTHOR_ID = "gh_72517d36a4d7"
 AUTHOR_URL = "https://wxredian.com/author?id=%s" % AUTHOR_ID
 TARGET = sys.argv[1] if len(sys.argv) > 1 else AUTHOR_URL
@@ -66,11 +84,19 @@ for _ in range(40):
         pass
 
 if not ws_url:
-    print("FAIL: cannot connect to chrome")
+    print("FAIL: cannot connect to chrome（端口 %d 无响应；若为 profile 被占用，"
+          "先清理残留 chrome 进程再重跑）" % PORT)
     proc.terminate()
     sys.exit(1)
 
-ws = websocket.create_connection(ws_url, timeout=60)
+print("CDP 端口: %d" % PORT)
+try:
+    # suppress_origin：不发 Origin 头，避免 Chrome 因 --remote-allow-origins 未生效而 403
+    ws = websocket.create_connection(ws_url, timeout=60, suppress_origin=True)
+except Exception as e:
+    print("FAIL: WebSocket 连接失败 %s: %s" % (type(e).__name__, e))
+    proc.terminate()
+    sys.exit(1)
 mid = [0]
 
 
