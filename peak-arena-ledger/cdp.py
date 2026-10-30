@@ -27,7 +27,9 @@ except Exception:
     pass
 
 CHROME = r"C:\Users\yanwx\AppData\Local\Google\Chrome\Application\chrome.exe"
-PROFILE = r"C:\tmp\cdpprof"
+# 可用 CDP_PROFILE 覆盖：老 profile 累积太多自动化会话后，Cloudflare 会下发更硬的挑战
+# （页面停在 title='wxredian.com'、0 个文章链接，150s 也过不去）。此时换一个全新 profile 重试。
+PROFILE = os.environ.get("CDP_PROFILE") or r"C:\tmp\cdpprof"
 
 
 def _free_port():
