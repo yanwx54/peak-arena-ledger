@@ -1,175 +1,56 @@
 # 项目长期笔记：PeakArena Ledger
 
-## 项目定位
-微信公众号「鸡坛快迅」《华府卫视战报》→「巅峰赛场」战绩的抓取 + 归档 + 台账工具链。
+## 定位与归档
+- 公众号「鸡坛快迅」《华府卫视战报》「巅峰赛场」战绩：抓取 → 出表 → 飞书/GitHub 同步。
+- 仓库 `D:\WorkSpace\Project08_peak-arena-ledger`（main）；GitHub https://github.com/yanwx54/peak-arena-ledger（public，SSH）。
+- 源工作区 `C:\Users\yanwx\WorkBuddy AI\2026-09-21-15-51-24`（权威备份源，数据异常时从此恢复）。
+- 定时任务：每天 10:00，id `78b54c67-529e-4838-8a4a-b2bf27e3dbae`，跑 `peak-arena-ledger/daily_update.py`（全链路一条命令）。
+- 逐轮执行明细见 `.workbuddy-ai/memory/automations/<id>/memory.md`。
 
-## 归档位置
-- **本地仓库**：`D:\WorkSpace\Project08_peak-arena-ledger`（分支 `main`）
-- **GitHub**：https://github.com/yanwx54/peak-arena-ledger （public，远程用 SSH）
-- 原工作区：`C:\Users\yanwx\WorkBuddy AI\2026-09-21-15-51-24`
-- 后续改动记得同步回仓库并提交。
-
-## 自动化与外部同步
-- **定时任务**：每天 10:00，自动化 id `78b54c67-529e-4838-8a4a-b2bf27e3dbae`，
-  cwd = 仓库目录，跑 `peak-arena-ledger/daily_update.py`（全链路一条命令）。
-- **飞书**：云空间文件夹「PeakArena Ledger 战绩台账」
-  - folder_token `KqwPfr0srlR6qedsdP9czMfxnng`
-  - 台账 file_token `LiiKbN6PXo9Bk6xxPx0ciuTLnVh`（`--file-token` 覆盖上传，链接恒定）
-  - 配置存 `deploy/feishu.json`（已 gitignore，不入库）
-  - `lark-cli` 路径：`C:\Users\yanwx\.workbuddy\binaries\node\cli-connector-packages\lark-cli.cmd`
-    （注意是 `.workbuddy`，不是 `.workbuddy-ai`）
-- **GitHub 建仓**：WorkBuddy 的 GitHub connector 无建仓权限，需用 `git credential fill`
-  的 token 直连 api.github.com 且**绕过沙箱**。详见技能 `archive-project-to-github`。
+## 飞书
+- folder_token `KqwPfr0srlR6qedsdP9czMfxnng`；台账 file_token `LiiKbN6PXo9Bk6xxPx0ciuTLnVh`（`--file-token` 覆盖上传，链接恒定）。
+- 配置 `deploy/feishu.json`（gitignore，勿改）。
+- lark-cli：`C:\Users\yanwx\.workbuddy\binaries\node\cli-connector-packages\lark-cli.cmd`（是 `.workbuddy`，不是 `.workbuddy-ai`）。
 
 ## 数据口径（改动前必确认）
-1. **比赛日 = 战报发布日 − 1 天**（战报标题为「昨日战报」）
-2. 只取「巅峰赛场」条目，同期的其它子栏目不算
-3. 去重键 = `(比赛日, 选手1, 比分, 选手2)`
-4. 比分取主赛制结果，文中叙述性片段比分（「一度 2:1 领先」）不计入
-5. 起算日 2026-01-01；实际首场 2026-01-05
+1. 比赛日 = 战报发布日 − 1 天（标题为「昨日战报」）
+2. 只取「巅峰赛场」，同期其它子栏目不算
+3. 去重键 `(match_date, p1, score, p2)`
+4. 比分取主赛制结果，文中叙述性片段（「一度 2:1 领先」）不计
+5. 起算 2026-01-01；实际首场 2026-01-05
 
 ## 关键约定
-- 脚本一律用 `os.path.dirname(os.path.abspath(__file__))` 定位，**禁止硬编码绝对路径**（换盘符会写回旧目录）。
-- `peak-arena-ledger/data/cookies.json` 是 wxredian 会话凭据（有效期约 1 天），**永远不入库**。
-- 重跑抓取需先跑 `cdp.py` 过 Cloudflare（本机 headful Chrome + CDP）；解析与出表是纯本地操作，不依赖网络。
-- **`cdp.py` 禁止固定 sleep 取 cookie**：wxredian 的 Turnstile 实测要 ~17 秒才通过（曾写死 12s 导致偶发失效），
-  必须轮询到「验证页消失 + 能取到文章链接」再落盘，并用该 cookie 实测校验一次。
-- **抓取类流水线必须防「0 值清空」和「大幅缩水」**：枚举/解析为 0 或较上轮降幅 ≥20% 时覆盖式写盘会毁掉好数据。
-  `daily_update.py` 已实现每轮备份 `data/.backup/` + 回滚中止（0 值 + 20% 缩水阈值，2026-10-02 补）。
-  **Cloudflare 半通过是真实失效模式**：cdp.py 的单次校验请求能过，不代表所有分页请求都能过——
-  2026-10-02 曾因半通过导致 285→194 篇、213→139 场，坏数据一度覆盖到飞书和 GitHub，后人工回滚。
-- **源工作区是权威副本**：仓库侧数据异常时从 `C:\Users\yanwx\WorkBuddy AI\2026-09-21-15-51-24\peak-arena-ledger` 恢复。
-- `build.py` 用 `freeze_xlsx()` 冻结 xlsx 时间戳，保证同样数据产出字节一致，避免每日空提交。
-- **战报段表头不统一（源头问题，解析器必须兼容）**：
-  主流 `【华府卫视昨日战报】`；偶有省略「卫视」的 `【华府昨日战报】`（2025-12-18、2026-09-20）；
-  个别期次**整段漏写 `【】` 表头**（2026-03-28）。
-  `extract_jd.py` 已改为 `【\s*华府(?:卫视)?[^】]{0,10}战报\s*】` + 无表头时以编号 `N、巅峰赛场` 兜底。
-  **新增期次若出现新写法，需同步扩展**，否则整段会被静默跳过。
-- **根目录 CSV / HTML 是对外声明的交付物**，`daily_update.py` 已加「同步根目录交付物」步骤从 `output/` 复制，
-  避免再像 2026-09-22 之前那样长期停在旧版本（根 CSV 自建库起一直被误命名为 xlsx 二进制）。
-- **自检要查「整段被跳过」**：`diag.py` 原有检查只看已匹配到的战报段内部，
-  当整段没被匹配时会报 0 遗漏、形同虚设。已补第二道检查（全文含「巅峰赛场」却零解析）。
-- **「台账日期不前进」先判上游，别急着重跑**：归档站 wxredian 会滞后（实测过 09-27 10:37 起停更 24h+，
-  至 09-29 仍未收录「鸡坛快迅」新文章）。
-  判别方法：① 作者页 `/author?id=gh_72517d36a4d7&cycle=YYYYMM` 与上轮比对 MD5；
-  ② 加 cache-buster 排除 CDN 缓存；③ 无 cookie 应返回 ~4KB 验证页、带 cookie 返回 ~145KB 正常页（验证 cookie 有效）；
-  ④ **作者页自带的「共找到 N 条记录」是权威计数**，与解析条数一致即可证明「归档站自己就没有」而非我们漏抓；
-  ⑤ 看**首页热文流**最新时间戳：首页也在停 → 全站滞后；首页在更新（其它号）但本号不动 → **该号收录滞后**（09-29 实测属此类）。
-  `daily_update.py` 已加 `upstream_freshness()`，停滞时会打印「上游归档站无新增」并写入 `upstream` 字段。
-  重跑对上游滞后无效（只多耗一次 Cloudflare 验证）；持续 >3 天不收录才考虑备选数据源。
-- **作者页单页上限 30 条**：`/author?...&cycle=YYYYMM` 超过 30 条会分页（8 月 total=32 需 `&page=2`）。
-  `list_articles.py` 已按 `page ≤ 6` 循环；某月恰好 ≥30 条时若漏分页会静默少抓。
-- **枚举的月份范围必须动态生成**（2026-10-09 修复）：`list_articles.py` 原来写死
-  `["202512"] + ["2026%02d" % m for m in range(1, 10)]`，**只到 9 月**。进入 10 月后 10 月作者页
-  从未被请求，枚举结果与上轮逐字节相同 → 被 `upstream_freshness()` 误报成「上游无新增」，
-  新战绩静默丢弃（本次丢了 10 月 6 场 + 9 月 1 场）。已改为 `month_cycles()` 按 `date.today()` 生成。
-  **教训：「逐字节一致」≠ 上游没更新，也可能是自己的枚举范围到期失效。**
-- **判断「上游滞后」前必须手工抽查当月作者页**：`cycle=YYYYMM` 看「共找到 N 条记录」，
-  若当月有记录而脚本报「逐字节一致」→ 是枚举/分页 bug，不是上游问题。
-  （注：本机 ad-hoc 手工探测偶发 `getaddrinfo failed`（DNS），2026-10-09、2026-10-26 各一次；
-  这是本地临时请求的问题，主脚本内部网络正常，此时以脚本的 `upstream_site` 字段为准即可。）
-- **解释器依赖**（2026-10-09）：自动化命令用的托管解释器 `binaries/python/versions/3.13.12/python.exe`
-  一度缺 `websocket`（`cdp.py` 依赖）与 `openpyxl`，已在其中补装；托管 venv
-  `binaries/python/envs/default` 也补了 `websocket-client`。若某天报 `No module named websocket`，
-  说明运行时被重置，按同样方式补装即可。系统 Python 3.13.13 依赖齐全，可作备选。
-  注意不同解释器的 openpyxl 版本会让 xlsx 字节变化（数据不变），非数据问题。
-  **已复发**（2026-10-14 再次 `websocket`+`openpyxl` 双缺）：属运行时周期性重置，
-  直接 `pip install websocket-client openpyxl` 后重跑即可；该失败在 cookie 步骤前中止，`data/` 安全。
-- **CDP 调试端口不再固定 9222**（2026-10-26 修复）：本机另一个项目
-  `D:\WorkSpace\scplayer-stats` 的残留 Chrome（profile `.sync-chrome`）也用 `--remote-debugging-port=9222`
-  且**不带 `--remote-allow-origins`**，会抢走端口。表现为
-  `WebSocketBadStatusException: Handshake status 403 Forbidden ... Rejected an incoming WebSocket
-  connection from the http://127.0.0.1:9222 origin`。**这不是 Cloudflare、也不是依赖问题。**
-  `cdp.py` 已改为 `_free_port()` 动态取空闲端口（可用 `CDP_PORT` 覆盖），并给
-  `create_connection(..., suppress_origin=True)` 兜底；连接失败时会先 terminate Chrome 再退出。
-- **`ConnectionAbortedError: [WinError 10053]` 属 Chrome 一次性崩溃**（2026-10-26 实测）：
-  发生在轮询等 Turnstile 期间，直接重跑即可。先用 `cdp.py` 单跑区分「脚本问题」与「Chrome 崩了」。
+- 脚本用 `os.path.dirname(os.path.abspath(__file__))` 定位，**禁止硬编码绝对路径**。
+- `data/cookies.json` 是 wxredian 会话凭据（约 1 天有效），**永远不入库**。
+- 抓取需 `cdp.py` 过 Cloudflare（本机 headful Chrome + CDP）；解析/出表纯本地。
+- **`cdp.py` 禁止固定 sleep**：Turnstile 实测约 17s 通过，须轮询到「验证页消失 + 能取到文章链接」再落盘并实测校验（上限 150s）。
+- **数据保护 guard**：每轮先备份 `data/.backup/`；枚举/解析为 0 或较上轮降幅 ≥20% 时自动回滚中止（2026-10-02 Cloudflare 半通过事故后补）。
+- `xlsx-builder/build.py` 的 `freeze_xlsx()` 冻结时间戳，保证同数据字节一致，避免每日空提交。
+- 根目录 CSV/HTML 是对外交付物，`daily_update.py` 自动从 `output/` 复制同步。
+- 解析器须兼容表头变体：`【\s*华府(?:卫视)?[^】]{0,10}战报\s*】`，无表头时以 `N、巅峰赛场` 兜底。新写法出现要同步扩展，否则整段静默跳过。
+- `diag.py` 双检查：段内遗漏 + 整段未匹配（全文含「巅峰赛场」却零解析）；A/B 均应为 0。
+
+## 上游归档站 wxredian
+- 第三方公众号归档站，收录节奏自控：通常滞后 1~2 天，偶发 3 天+。
+- 判「滞后」三条：① 作者页 `/author?id=gh_72517d36a4d7&cycle=YYYYMM` 的「共找到 N 条记录」；② 首页热文流最新时间戳（区分全站滞后 vs 本号滞后）；③ 无 cookie 返回 ~4KB 验证页 / 带 cookie ~105–145KB 正常页。
+- **「逐字节一致」≠ 上游没更新**，也可能是自己的枚举范围到期失效（2026-10-09 曾因月份写死只到 9 月丢 7 场）→ 报一致前必手工抽查**当月**作者页。现已改 `month_cycles()` 按 `date.today()` 生成。
+- 作者页单页上限 30 条，`list_articles.py` 按 `page ≤ 6` 分页。
+- `upstream_freshness()` 写 `upstream`(stale/updated) 与 `upstream_site` 字段；重跑对上游滞后无效，>3 天不收录才考虑备选源。
+- 公众号已更新 ≠ 归档站已收录；**用户口述/截图是一手来源，可作补录依据**。
+
+## 已知故障模式（按此顺序排查，别乱改代码）
+- `No module named websocket`：托管解释器依赖被周期性重置 → `pip install websocket-client openpyxl` 后重跑。此失败在 cookie 步骤前中止，`data/` 安全。
+- CDP `403 Forbidden ... Rejected an incoming WebSocket connection`：9222 被别的项目残留 Chrome 抢占（如 scplayer-stats）→ `cdp.py` 已改 `_free_port()` 动态端口 + `suppress_origin=True`。
+- `ConnectionAbortedError [WinError 10053]`：Chrome 崩了一次，直接重跑。
+- xlsx 被 Excel/WPS 打开 → `WinError 5`：`commit_tmp()` 已重试 3 次→直接覆盖写入。
+- 本机 ad-hoc 探测偶发 DNS `getaddrinfo failed`：以脚本的 `upstream_site` 为准。
+
+## 手工补录机制
+- 入口 `data/manual_records.json`（入库），字段同 `jd_records.json`。
+- 合并点在 **`build_output.py` 出表时**（先合并再按去重键去重）；**不放 `extract_jd.py`**——那里整体覆盖 `jd_records.json`，补录混进去会让 `n_records` 恒 >0，静默绕过 0 值 guard。
+- 归档站补收录后，同键的正式记录排序在前 → 手工条目自动收敛，`manual backfill: 0` 即生效。
 
 ## 当前数据状态
-- 2026-01-05 ~ **2026-10-22**，**238 场**（原始记录 521 条；含 3 条手工补录）
-- 按月：1月17 / 2月16 / 3月23 / 4月35 / 5月24 / 6月25 / 7月31 / 8月20 / 9月27 / **10月20**
-- 2026-10-26 例行更新：235 → **238 场**（至 2026-10-22），新增 10/20 Snow 4:0 Soma、
-  10/21 SPeed 4:3 JD、10/22 Queen 4:2 Bisu；文章 308 → 311；`upstream=updated`；
-  `diag.py` A=0 / B=0；`manual backfill: 0`。
-  飞书 version 7700773234496556284，GitHub `85695eb` 已推送（含 cdp.py 端口修复）。
-  **前两轮失败**：① 9222 端口被 scplayer-stats 残留 Chrome 抢占（403）→ 改动态端口；
-  ② Chrome 中途崩溃（10053）→ 直接重跑成功。待补比赛日 10-23 起（归档站最新 10-23 08:48，滞后约 3 天）。
-- 2026-10-26 10:05 当日第二轮**无净新增**：仍 **238 场**（至 2026-10-22）。`upstream=stale`，
-  文章列表与上一轮逐字节一致（311 篇，最新 2026-10-23 08:48），`upstream_site`=2026-10-25 13:05
-  → **本号收录滞后已满 3 天**。飞书 version 7700793962642050292，GitHub 无变更跳过（HEAD=`11e1c9d`）。
-  **下一轮若仍 stale，按判据应转备选源或请用户提供公众号截图走 `manual_records.json` 补录。**
-- 2026-10-22 例行更新**无净新增**：仍 **235 场**（至 2026-10-19）。`upstream=stale`，
-  本号作者页最新文章停在 2026-10-20 07:56，`upstream_site`=2026-10-22 09:32（其它号在更新）
-  → **本号收录滞后约 2 天**，非抓取失败。待补比赛日 10-20、10-21。
-  飞书 version 7699368628222741791，GitHub 无变更跳过（HEAD=`1ea2cc4`=origin/main）。
-- 2026-10-21 例行更新：232 → **235 场**（至 2026-10-19），新增 10/17 迷糊 1:4 Stork、
-  10/18 Sorry 3:4 Soma、10/19 Soma 4:2 Bisu；文章 306 → 308。
-  飞书 version 7699105446384127234，GitHub `889fb7e`。
-- 2026-10-19 例行更新：230 → **232 场**（至 2026-10-16），新增 10/14 Best 4:3 Sorry、10/16 Bisu 3:4 Queen；
-  文章 300 → 306。**比赛日 10-15 为空属源头缺失**（10-16 那期战报全文「巅峰赛场」出现 0 次，
-  只有其它子栏目），非解析漏抓。飞书 version 7698167891287362842，GitHub `b7d2d54`。
-- wxredian 归档已更新到 2026-10-11（300 篇）；**自 10-11 起本号收录滞后**（见下）
-- 2026-09-23 修正解析器漏抓，补回 3 场：2026-03-27 JD 4:0 Bisu、2026-03-27 JD 1:2 Bisu、2026-09-19 Speed 4:1 JD
-- 2026-09-24 例行更新新增 3 场：2026-09-20 Sharp 4:3 Queen、2026-09-21 Speed 4:2 Best、2026-09-22 Speed 4:2 Hero
-- 2026-09-27 例行更新新增 3 场：2026-09-23 Best 4:3 Sorry、2026-09-24 Bisu 2:4 Soulkey、2026-09-25 Bisu 0:4 JD
-- 2026-09-28 / 09-29 例行更新**无新增**（仍 213 场）：归档站自 09-27 10:37 起未收录本号新文章，
-  09-29 复核确认「该号作者页收录滞后」而非全站停摆（首页热文流已到 09-28 13:59）。
-  待补：比赛日 09-26、09-27 的战报（需 09-27 / 09-28 发布的文章）。**已于 2026-10-03 补齐。**
-- 2026-10-02 自动运行**事故 + 回滚**：Cloudflare Turnstile 半通过致文章 285→194、战绩 213→139（7-9 月丢失），
-  坏数据一度推到飞书+GitHub。人工从 `data/.backup/` 恢复并重新生成全部交付物，覆盖上传飞书
-  （version 7691998716886011068）、提交修复 `8a80928`+guard 改进 `3d67ad1`。台账仍为 **213 场 / 09-25**（正确恢复）。
-- 2026-10-03 例行更新**恢复正常增量**：上游归档站重新收录本号（`upstream=updated`），
-  213 → **217 场**（至 2026-09-29），新增 4 场（9/26 Sorry 4:1 Soulkey、9/27 永镇 4:3 永康、
-  9/28 Queen 4:1 Mini、9/29 Bisu 4:3 Hero）；09-29 标记「待补」的两场缺口已补齐。
-  飞书 version 7692417798856789215，GitHub `2d0040e` 已推送。
-- 2026-10-04 / 10-05 例行更新**无新增**（仍 217 场）：归档站未再收录本号，
-  事后（10-09）查明这段「无新增」其实是 `list_articles.py` 月份范围写死到 9 月所致。
-- 2026-10-09 例行更新**发现并修复枚举范围 bug**：217 → **224 场**（至 2026-10-07），新增 7 场
-  （9/30 Light 4:1 Best、10/1 Action 4:1 Bisu、10/2 Bisu 4:2 Speed、10/3 Bisu 3:4 Speed、
-  10/4 Best 2:4 Sorry、10/5 Best 2:4 Sorry、10/7 JD 4:1 Speed）。
-  10/4 与 10/5 连续同比分已核原文确认是两场真实比赛。文章 287 → 297（10 月 8 篇）。
-  飞书 version 7694479498871311580，GitHub `5427b3e` → `a6de8e7` 已推送。
-- 2026-10-14 例行更新：224 → **227 场**（至 2026-10-10），新增 3 场
-  （10/8 Snow 4:2 Rush、10/9 Bisu 4:2 Speed、10/10 Mini 4:1 Speed）。
-  `upstream=updated`（本号收录滞后结束）；文章 297 → **300**（10 月 11 篇）。飞书 version 7696409716783631629，
-  GitHub `ff16c82` 已推送。
-  **首轮失败**：托管解释器 `websocket`/`openpyxl` 再次被重置（10-09 后复发），
-  `pip install websocket-client openpyxl` 补装后重跑成功；失败发生在 cookie 步骤前，`data/` 安全。
-- 2026-10-14 下午：用户反馈**公众号已更新但归档站没有** → 新增**手工补录机制**，227 → **228 场**（至 2026-10-13）。
-  飞书 version 7696435598789184803，GitHub `d59c399` + `0d64d77` + `74eabf7` 已推送。
-  随后用户补齐比赛日 10-11 / 10-12 → **230 场**（10 月 12 场），手工补录共 3 条
-  （10-11 Speed 4:1 Best、10-12 Bisu 4:0 JD、10-13 Bisu 4:0 Hero）。
-  飞书 version 7696437910769290432，GitHub `a2c031c` 已推送。
-- 2026-10-15 例行更新**无净新增**：仍 **230 场**（至 2026-10-13）。`upstream=updated`，
-  归档站已收录 10-13 / 10-14 发布的文章（文章 +2，`has_jd` 219→222、records 499→505），
-  但对应比赛日 10-12 / 10-13 已由手工补录覆盖，故总数不变。
-  **手工补录自动收敛首次实际生效**：`manual backfill: 0`，3 条手工记录的 `title` 被正式解析的同键记录
-  替换为真实战报标题（机制按 10-14 的设计正常工作）。飞书 version 7696793774705446182，
-  GitHub `51d5024` 已推送。托管解释器依赖本轮正常，未复发丢失。
-
-## 上游归档站 wxredian（是什么 / 为什么会延迟）
-- **它是什么**：`wxredian.com` 是一个**第三方**微信公众号文章归档/索引站（非腾讯官方、非本号运营方），
-  靠自己的爬虫定期抓取各公众号文章并归档。我们的抓取链路（`cdp.py` 过 Cloudflare → `list_articles.py`
-  按月分页枚举作者页 → `fetch_all.py` 抓正文）完全依赖它。
-- **为什么会延迟**：它的收录节奏由它自己控制，**不由我们或公众号决定**。实测规律：
-  通常滞后 1~2 天，偶发 3 天以上；历史上 09-27 起停更 24h+、10-11 起本号停更 3 天。
-  **站点在正常更新（首页热文流有其它公众号新内容）≠ 本号已被收录**——两者要分开看。
-- **判别口径**（缺一不可）：① 本号作者页 `/author?id=gh_72517d36a4d7&cycle=YYYYMM` 的「共找到 N 条记录」；
-  ② 首页热文流最新时间戳（区分全站滞后 vs 本号滞后）；③ 无 cookie 应返回 ~4KB 验证页、带 cookie ~105KB 正常页。
-- **公众号本身更新 ≠ 归档站已收录**：2026-10-14 用户在微信里看到当天战报（比赛日 10-13），
-  归档站却仍停在本号 10-11 那篇。**用户口述/截图是可信的一手来源，可作补录依据。**
-
-## 手工补录机制（2026-10-14 新增）
-- 入口：`peak-arena-ledger/data/manual_records.json`（**入库**，含 `_readme`）。
-  字段与 `jd_records.json` 一致：`match_date`(比赛日) / `pub`(发布日) / `p1` / `score` / `p2` / `title` / `id`。
-- 合并点：**`build_output.py` 出表时**（先合并、再按 `(match_date,p1,score,p2)` 去重）。
-- **为什么不放在 `extract_jd.py`**：那里会整体覆盖 `jd_records.json`；若把补录混进去，
-  解析全挂时 `n_records` 仍 >0，会**静默绕过 `daily_update.py` 的「0 值回滚」保护**。
-  放在出表阶段则 `jd_records.json` 保持纯解析语义，guard 不受影响。
-- **自动收敛**：归档站补收录后，正式解析出的同一条记录键相同且排序在前 → 手工条目自动失效，可删。
-- 口径仍严格按老规矩：比赛日 = 发布日 − 1 天；只取「巅峰赛场」；比分取主赛制结果。
-
-## 已知坑：xlsx 被 Excel/WPS 打开
-- 用户查看台账时文件常处于打开状态，Windows 会拒绝 `os.replace`（`WinError 5 拒绝访问`），
-  此前会让「生成 xlsx」失败并**连带跳过飞书上传与 GitHub 推送**（2026-10-14 实际发生）。
-- 已修（`xlsx-builder/build.py` 的 `commit_tmp()`）：重试 3 次 → 仍失败则直接覆盖写入 → 再失败才报可操作提示。
+- 2026-01-05 ~ **2026-10-22**，**238 场**（原始记录 521 条，含 3 条手工补录）。
+- 按月：1月17 / 2月16 / 3月23 / 4月35 / 5月24 / 6月25 / 7月31 / 8月20 / 9月27 / 10月20。
+- 比赛日 10-15 空缺属**源头缺失**（该期战报无「巅峰赛场」栏目），非漏抓。
