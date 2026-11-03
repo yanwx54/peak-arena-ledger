@@ -32,18 +32,29 @@
 
 ## 上游归档站 wxredian
 - 第三方公众号归档站，收录节奏自控：通常滞后 1~2 天，偶发 3 天+。
+- **站点会迁服**（2026-10-27~29）：旧 IP `45.136.15.27`（用到 10-26 19:56）→ 新 IP `207.57.135.129`（HK，AS139659 LUCIDACLOUD，10-29 16:42 起）。
+  新 IP **从本机网络被静默丢包**（443/80/8080/8443 全 timeout、ping 100% 丢、**无 RST**；对照腾讯云 HK 节点返回 RST）。
+  → 遇到"连不上"先用 OTX passive DNS 查历史 IP，别直接判定成 Cloudflare 拦人或脚本问题。
 - 判「滞后」三条：① 作者页 `/author?id=gh_72517d36a4d7&cycle=YYYYMM` 的「共找到 N 条记录」；② 首页热文流最新时间戳（区分全站滞后 vs 本号滞后）；③ 无 cookie 返回 ~4KB 验证页 / 带 cookie ~105–145KB 正常页。
 - **「逐字节一致」≠ 上游没更新**，也可能是自己的枚举范围到期失效（2026-10-09 曾因月份写死只到 9 月丢 7 场）→ 报一致前必手工抽查**当月**作者页。现已改 `month_cycles()` 按 `date.today()` 生成。
 - 作者页单页上限 30 条，`list_articles.py` 按 `page ≤ 6` 分页。
 - `upstream_freshness()` 写 `upstream`(stale/updated) 与 `upstream_site` 字段；重跑对上游滞后无效，>3 天不收录才考虑备选源。
 - 公众号已更新 ≠ 归档站已收录；**用户口述/截图是一手来源，可作补录依据**。
+- **挑战只针对内容路径**：`/author`、`/art` 会跳 `/verify?redirect=`（非浏览器客户端拿不到）；`/`、`/index?page=N` 不拦，但只有标题+链接、无正文摘要。
+- 备用出口排查：smzdm 转载停在更早内容；tianyancha 镜像只索引旧文；搜索引擎未收录该号战报 → **站点本身是唯一来源**，别的路都堵死。
 
 ## 已知故障模式（按此顺序排查，别乱改代码）
+- **`title='wxredian.com' links=0` 且耗时 150s**：2026-10-30 起误判为"Turnstile 不过"，实为**网络层连不上**（Chrome 错误页标题就是主机名）。
+  `cdp.py` 已修：识别 `chrome-error://` / `ERR_` 立即中止（~30s）并打印解析 IP + TCP 探测结论。
+  **先看这条，别再空等 150s**。
 - `No module named websocket`：托管解释器依赖被周期性重置 → `pip install websocket-client openpyxl` 后重跑。此失败在 cookie 步骤前中止，`data/` 安全。
 - CDP `403 Forbidden ... Rejected an incoming WebSocket connection`：9222 被别的项目残留 Chrome 抢占（如 scplayer-stats）→ `cdp.py` 已改 `_free_port()` 动态端口 + `suppress_origin=True`。
 - `ConnectionAbortedError [WinError 10053]`：Chrome 崩了一次，直接重跑。
 - xlsx 被 Excel/WPS 打开 → `WinError 5`：`commit_tmp()` 已重试 3 次→直接覆盖写入。
 - 本机 ad-hoc 探测偶发 DNS `getaddrinfo failed`：以脚本的 `upstream_site` 为准。
+- `cdp.py` 环境变量：`CDP_PROFILE`（换 profile）、`CDP_FORCE_IP`（强制域名→指定 IP，迁服时用）、
+  `CDP_PROXY`（`--proxy-server`，Chrome 不认 http_proxy 环境变量，必须显式注入）、`CDP_WAIT_MAX`（等待上限）。
+
 
 ## 手工补录机制
 - 入口 `data/manual_records.json`（入库），字段同 `jd_records.json`。

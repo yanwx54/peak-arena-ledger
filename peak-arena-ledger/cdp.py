@@ -61,7 +61,16 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 os.makedirs(PROFILE, exist_ok=True)
 os.makedirs(os.path.join(HERE, "data"), exist_ok=True)
 
-proc = subprocess.Popen([
+# CDP_FORCE_IP：站点迁服 / DNS 返回的 IP 不可达时，把域名强制指到指定 IP。
+# 背景：wxredian.com 2026-10-29 换到新 IP（207.57.135.129，HK），从本机网络被静默丢包。
+# 例：CDP_FORCE_IP=45.136.15.27 python cdp.py
+FORCE_IP = os.environ.get("CDP_FORCE_IP") or ""
+HOST = TARGET.split("/")[2].split("?")[0]
+# CDP_PROXY：本地 VPN/代理的监听地址（如 http://127.0.0.1:7890）。
+# Chrome 只认系统代理，不认 http_proxy 环境变量，所以这里显式注入 --proxy-server。
+PROXY = os.environ.get("CDP_PROXY") or ""
+
+chrome_args = [
     CHROME,
     "--remote-debugging-port=%d" % PORT,
     "--remote-allow-origins=*",
@@ -70,8 +79,16 @@ proc = subprocess.Popen([
     "--no-default-browser-check",
     "--disable-features=Translate",
     "--window-size=1200,900",
-    "about:blank",
-], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+]
+if FORCE_IP:
+    chrome_args.append("--host-resolver-rules=MAP %s %s" % (HOST, FORCE_IP))
+    print("强制解析: %s -> %s" % (HOST, FORCE_IP))
+if PROXY:
+    chrome_args.append("--proxy-server=" + PROXY)
+    print("使用代理: %s" % PROXY)
+chrome_args.append("about:blank")
+
+proc = subprocess.Popen(chrome_args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 ws_url = None
 for _ in range(40):
@@ -121,12 +138,36 @@ cmd("Network.enable")
 cmd("Page.navigate", {"url": TARGET})
 
 # ---------- 轮询等待 Turnstile 验证通过 ----------
-PROBE = ("JSON.stringify({title:document.title,"
-         "links:document.querySelectorAll('a[href*=\"/art?id=\"]').length})")
+# 关键：必须区分两种完全不同的失败：
+#   ① 页面停在 Turnstile 验证页（站点可达，挑战没过）→ 继续等
+#   ② 页面是 Chrome 错误页 chrome-error://（网络层根本连不上服务器）→ 立即中止
+#      2026-10-30 起连续多轮误判为①：站点迁到新服务器后，本机到新 IP 的所有端口被静默丢包，
+#      Chrome 错误页的标题就是主机名（看起来像 "title='wxredian.com'"），链接数恒为 0，
+#      于是被当成"Turnstile 没过"，白等 150s × 多轮。
+PROBE = ("JSON.stringify({title:document.title,url:location.href,"
+         "links:document.querySelectorAll('a[href*=\"/art?id=\"]').length,"
+         "err:(location.protocol==='chrome-error:'?document.body.innerText.slice(0,400):'')})")
+
+
+def tcp_probe(host, port=443, timeout=6):
+    """探测目标是否 TCP 可达，用于区分'站点挂了'与'我们被丢包'。"""
+    try:
+        ip = socket.gethostbyname(host)
+    except Exception:
+        return None, "DNS 解析失败"
+    t0 = time.time()
+    try:
+        s = socket.create_connection((ip, port), timeout=timeout)
+        s.close()
+        return ip, "TCP %d 可达 (%.1fs)" % (port, time.time() - t0)
+    except Exception as e:
+        return ip, "TCP %d 不可达: %s (%.1fs)" % (port, type(e).__name__, time.time() - t0)
+
 
 verified = False
 t0 = time.time()
 last = ""
+err_streak = 0
 while time.time() - t0 < WAIT_MAX:
     time.sleep(2)
     raw = evaluate(PROBE)
@@ -134,9 +175,28 @@ while time.time() - t0 < WAIT_MAX:
         continue
     info = json.loads(raw)
     title, links = info.get("title", ""), info.get("links", 0)
+    err = info.get("err") or ""
     if (title, links) != last:
         print("  [%3ds] title=%r links=%d" % (int(time.time() - t0), title, links))
         last = (title, links)
+    # ② 网络层错误页：立刻中止，别再干等
+    if err and ("ERR_" in err or "无法访问" in err):
+        err_streak += 1
+        if err_streak >= 2:
+            host = TARGET.split("/")[2].split("?")[0]
+            ip, stat = tcp_probe(host)
+            print("PAGE:", raw)
+            print("FAIL: 站点不可达（网络层，非 Cloudflare 验证问题）")
+            print("  解析 IP: %s" % (ip or "?"))
+            print("  连通性: %s" % stat)
+            print("  Chrome 报错: %s" % err.replace("\n", " ")[:160])
+            print("  → 该 IP 从本机网络被静默丢包（非 RST）。站点若刚迁服，新 IP 可能对本网络不可达；")
+            print("    可用 CDP_FORCE_IP 指定其它 IP，或换网络（热点/VPN）后重跑。")
+            ws.close()
+            proc.terminate()
+            sys.exit(1)
+        continue
+    err_streak = 0
     if "验证" not in title and links > 0:
         verified = True
         break
