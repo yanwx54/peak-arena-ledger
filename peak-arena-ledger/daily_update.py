@@ -18,6 +18,7 @@ import re
 import shutil
 import subprocess
 import sys
+import datetime
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -200,62 +201,130 @@ def main():
     ap.add_argument("--skip-cookie", action="store_true", help="跳过 cookie 刷新，用现有 cookie")
     ap.add_argument("--skip-feishu", action="store_true")
     ap.add_argument("--skip-git", action="store_true")
+    ap.add_argument("--source", choices=["wxredian", "sogou", "both"], default="both",
+                    help="文章数据源：wxredian=仅主源，sogou=仅搜狗备源，both=主源优先+备源兜底")
     args = ap.parse_args()
 
     result = {"status": "ok", "matches": None, "latest": None, "feishu": None, "git": None,
               "upstream": None, "upstream_site": None}
 
     # ---------- 1. 刷新 wxredian cookie ----------
+    # 主源不可达时不直接中止：wxredian 可能被网络封锁（IP/SNI 层），
+    # 此时降级到搜狗备源，避免整条流水线因为一个站点挂掉而停摆。
+    main_source_ok = True
     if args.skip_cookie:
         log("[步骤] 跳过 cookie 刷新（--skip-cookie）")
+    elif args.source == "sogou":
+        log("[步骤] 仅使用搜狗备源，跳过 wxredian cookie 刷新")
+        main_source_ok = False
     else:
-        run([sys.executable, "cdp.py"], label="刷新 wxredian cookie（本机 Chrome 过 Cloudflare）")
-        log("  ✓ cookie 已更新")
+        try:
+            run([sys.executable, "cdp.py"], label="刷新 wxredian cookie（本机 Chrome 过 Cloudflare）")
+            log("  ✓ cookie 已更新")
+        except Exception as e:
+            main_source_ok = False
+            log("  ! 主源 cookie 刷新失败：%s" % e)
+            log("  → 将降级到搜狗备源（weixin.sogou.com → mp.weixin.qq.com）")
 
     # ---------- 2~5. 抓取与解析 ----------
     backup_data()
     before_articles = guarded_count(os.path.join(HERE, "data", "articles_list.json"))
 
-    out = run([sys.executable, "list_articles.py"], label="枚举文章列表")
-    for line in out.strip().splitlines()[-3:]:
-        log("  " + line)
-    m = re.search(r"TOTAL unique articles:\s*(\d+)", out)
-    n_articles = int(m.group(1)) if m else -1
-    if n_articles <= 0:
-        restore_data()
-        raise RuntimeError(
-            "文章枚举得到 %d 篇（上一轮为 %d 篇），疑似 Cloudflare 验证未通过。"
-            "已回滚数据并中止，未做任何提交。" % (n_articles, before_articles))
-    if before_articles > 0 and n_articles < before_articles:
-        drop_pct = round((before_articles - n_articles) / before_articles * 100)
-        if drop_pct >= 20:
+    if main_source_ok:
+        out = run([sys.executable, "list_articles.py"], label="枚举文章列表")
+        for line in out.strip().splitlines()[-3:]:
+            log("  " + line)
+        m = re.search(r"TOTAL unique articles:\s*(\d+)", out)
+        n_articles = int(m.group(1)) if m else -1
+        if n_articles <= 0:
             restore_data()
             raise RuntimeError(
-                "文章数由 %d 降为 %d（降幅 %d%%），疑似 Cloudflare 验证仅部分通过。"
-                "已回滚数据并中止，未做任何提交。" % (before_articles, n_articles, drop_pct))
-        log("  ! 注意：文章数由 %d 降为 %d（降幅 %d%%），继续执行但请留意"
-            % (before_articles, n_articles, drop_pct))
+                "文章枚举得到 %d 篇（上一轮为 %d 篇），疑似 Cloudflare 验证未通过。"
+                "已回滚数据并中止，未做任何提交。" % (n_articles, before_articles))
+        if before_articles > 0 and n_articles < before_articles:
+            drop_pct = round((before_articles - n_articles) / before_articles * 100)
+            if drop_pct >= 20:
+                restore_data()
+                raise RuntimeError(
+                    "文章数由 %d 降为 %d（降幅 %d%%），疑似 Cloudflare 验证仅部分通过。"
+                    "已回滚数据并中止，未做任何提交。" % (before_articles, n_articles, drop_pct))
+            log("  ! 注意：文章数由 %d 降为 %d（降幅 %d%%），继续执行但请留意"
+                % (before_articles, n_articles, drop_pct))
 
-    stale, newest_art = upstream_freshness()
-    if stale:
-        log("  ! 上游归档站无新增：文章列表与上一轮逐字节一致（最新文章 %s）" % newest_art)
-        site = site_latest_timestamp()
-        if site:
-            result["upstream_site"] = site
-            # 时间戳格式固定为 YYYY-MM-DD HH:MM，字典序即时间序
-            if newest_art and site > newest_art:
-                log("    · 全站最新内容已到 %s（其它公众号）→ 站点在正常更新，属【本号收录滞后】"
-                    % site)
+        stale, newest_art = upstream_freshness()
+        if stale:
+            log("  ! 上游归档站无新增：文章列表与上一轮逐字节一致（最新文章 %s）" % newest_art)
+            site = site_latest_timestamp()
+            if site:
+                result["upstream_site"] = site
+                # 时间戳格式固定为 YYYY-MM-DD HH:MM，字典序即时间序
+                if newest_art and site > newest_art:
+                    log("    · 全站最新内容已到 %s（其它公众号）→ 站点在正常更新，属【本号收录滞后】"
+                        % site)
+                else:
+                    log("    · 全站最新内容也仅到 %s → 疑似【归档站整体滞后】" % site)
             else:
-                log("    · 全站最新内容也仅到 %s → 疑似【归档站整体滞后】" % site)
+                log("    · 未能探测全站最新时间戳（网络异常或验证页，可忽略）")
+            log("    → wxredian 尚未收录本号新文章，本轮不会产生新战绩；这不是抓取失败。")
+            result["upstream"] = "stale"
         else:
-            log("    · 未能探测全站最新时间戳（网络异常或验证页，可忽略）")
-        log("    → wxredian 尚未收录本号新文章，本轮不会产生新战绩；这不是抓取失败。")
-        result["upstream"] = "stale"
+            result["upstream"] = "updated"
     else:
-        result["upstream"] = "updated"
+        result["upstream"] = "unreachable"
+        log("[步骤] 主源不可用，跳过 wxredian 枚举")
 
-    run([sys.executable, "fetch_all.py"], label="抓取文章正文")
+    # ---------- 2b. 搜狗备源 ----------
+    # 搜狗微信搜索 → /link 跳转链还原 → 直取 mp.weixin.qq.com 原文，
+    # 完全绕开 wxredian 的 Cloudflare。主源恢复后，同一篇文章会被
+    # merge_sources.py 按标题/日期判重收敛，不会重复计数。
+    if args.source in ("sogou", "both"):
+        try:
+            out = run([sys.executable, "harvest.py"], label="搜狗微信文章枚举")
+            for line in out.strip().splitlines()[-2:]:
+                log("  " + line)
+        except Exception as e:
+            # harvest.py 退出码 2 = 被搜狗限流（本轮没采到，不是失败）。
+            # 这与「采集成功但上游无新增」必须区分，否则会误报成漏抓。
+            msg = str(e)
+            if "退出码 2" in msg:
+                log("  ! 搜狗本轮被限流，未采到新结果（保留既有清单，下次自动续抓）")
+                result["upstream"] = "sogou-limited"
+            else:
+                log("  ! 搜狗枚举失败：%s" % msg)
+        # 抓取窗口：以「已合并清单的最新日期」回溯 7 天为起点。
+        # 不能只从最新当天起 —— 主源不可达时，最新一天可能正是缺口，
+        # 回溯窗口保证缺口能被补上；sogou_fetch.py 会跳过已抓过的文章，
+        # 重复扫描不会产生重复正文。
+        latest_day = ""
+        try:
+            rows = json.load(open(os.path.join(HERE, "data", "articles_list.json"), encoding="utf-8"))
+            latest_day = max((a.get("date") or "")[:10] for a in rows if a.get("date"))
+        except Exception:
+            pass
+        since = "2026-01-01"
+        if latest_day:
+            d = datetime.date.fromisoformat(latest_day) - datetime.timedelta(days=7)
+            since = d.isoformat()
+        try:
+            out = run([sys.executable, "sogou_fetch.py", "--since", since],
+                      label="搜狗备源抓取正文")
+            for line in out.strip().splitlines()[-3:]:
+                log("  " + line)
+        except Exception as e:
+            log("  ! 搜狗抓取失败：%s" % e)
+        try:
+            out = run([sys.executable, "merge_sources.py"], label="合并多源文章清单")
+            for line in out.strip().splitlines()[-2:]:
+                log("  " + line)
+        except Exception as e:
+            log("  ! 合并文章清单失败：%s" % e)
+
+    # wxredian 正文抓取：只补主源条目。搜狗正文已由 sogou_fetch.py 直接落盘，
+    # 不走这里。主源不可达时跳过 —— 已有的正文文件不会丢。
+    if main_source_ok:
+        run([sys.executable, "fetch_all.py"], label="抓取文章正文")
+    else:
+        log("[步骤] 跳过 wxredian 正文抓取（主源不可用）")
 
     out = run([sys.executable, "extract_jd.py"], label="解析「巅峰赛场」战绩")
     for line in out.strip().splitlines()[:1]:
@@ -296,32 +365,40 @@ def main():
         log("  " + line)
 
     # ---------- 7. 上传飞书 ----------
+    # 飞书上传失败不阻断后续 Git 提交：飞书是「对外分发渠道」，Git 是「数据落盘」。
+    # 授权过期 / scope 未申请属于外部依赖问题，若在此中止，GitHub 上就永远拿不到本轮数据。
+    # 这里捕获异常、如实记录，再继续走 Git 步骤。
     if args.skip_feishu:
         log("[步骤] 跳过飞书上传（--skip-feishu）")
     elif not os.path.exists(FEISHU_CFG):
         log(f"[步骤] 跳过飞书上传：缺少配置 {FEISHU_CFG}")
         result["feishu"] = "skipped:no-config"
     else:
-        lark = find_lark_cli()
-        if not lark:
-            log("[步骤] 跳过飞书上传：未找到 lark-cli")
-            result["feishu"] = "skipped:no-cli"
-        else:
-            cfg = json.load(open(FEISHU_CFG, encoding="utf-8"))
-            log("[步骤] 覆盖上传台账到飞书云空间")
-            # --file 只接受 cwd 下的相对路径，故以 ROOT 为 cwd
-            rel = os.path.relpath(XLSX, ROOT).replace("\\", "/")
-            out = run([lark, "drive", "+upload", "--file", "./" + rel,
-                       "--folder-token", cfg["folder_token"],
-                       "--file-token", cfg["file_token"], "--format", "json"],
-                      cwd=ROOT, label=None)
-            try:
-                data = json.loads(out[out.index("{"):])["data"]
-                result["feishu"] = data["url"]
-                log(f"  ✓ 已上传：{data['url']}（version {data.get('version')}）")
-            except Exception:
-                log("  ✓ 已上传（未能解析返回）")
-                result["feishu"] = "uploaded"
+        try:
+            lark = find_lark_cli()
+            if not lark:
+                log("[步骤] 跳过飞书上传：未找到 lark-cli")
+                result["feishu"] = "skipped:no-cli"
+            else:
+                cfg = json.load(open(FEISHU_CFG, encoding="utf-8"))
+                log("[步骤] 覆盖上传台账到飞书云空间")
+                # --file 只接受 cwd 下的相对路径，故以 ROOT 为 cwd
+                rel = os.path.relpath(XLSX, ROOT).replace("\\", "/")
+                out = run([lark, "drive", "+upload", "--file", "./" + rel,
+                           "--folder-token", cfg["folder_token"],
+                           "--file-token", cfg["file_token"], "--format", "json"],
+                          cwd=ROOT, label=None)
+                try:
+                    data = json.loads(out[out.index("{"):])["data"]
+                    result["feishu"] = data["url"]
+                    log(f"  ✓ 已上传：{data['url']}（version {data.get('version')}）")
+                except Exception:
+                    log("  ✓ 已上传（未能解析返回）")
+                    result["feishu"] = "uploaded"
+        except Exception as e:
+            result["feishu"] = "failed:%s" % e
+            log("  ! 飞书上传失败（不阻断 Git 提交）：%s" % e)
+            log("    → 本地台账与 xlsx 已生成，可重新授权后单独重跑上传")
 
     # ---------- 8. 提交并推送 ----------
     if args.skip_git:

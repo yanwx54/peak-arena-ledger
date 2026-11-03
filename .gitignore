@@ -30,3 +30,6 @@ peak-arena-ledger/extract_log.txt
 .vscode/
 .DS_Store
 Thumbs.db
+
+# ===== 抓取中间产物的临时备份 =====
+peak-arena-ledger/data/*.bak.*
