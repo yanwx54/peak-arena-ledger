@@ -384,10 +384,23 @@ def main():
                 log("[步骤] 覆盖上传台账到飞书云空间")
                 # --file 只接受 cwd 下的相对路径，故以 ROOT 为 cwd
                 rel = os.path.relpath(XLSX, ROOT).replace("\\", "/")
-                out = run([lark, "drive", "+upload", "--file", "./" + rel,
-                           "--folder-token", cfg["folder_token"],
-                           "--file-token", cfg["file_token"], "--format", "json"],
-                          cwd=ROOT, label=None)
+                base = [lark, "drive", "+upload", "--file", "./" + rel,
+                        "--folder-token", cfg["folder_token"],
+                        "--file-token", cfg["file_token"], "--format", "json"]
+                # 应用（bot）身份常缺 drive:file:upload 这类「应用身份权限」，
+                # 而用户身份授权里通常已有（2026-11-03 实测：bot 报
+                # app_scope_not_applied，user 身份一次上传成功）。
+                # 因此默认先试自动身份，失败再显式用 --as user 兜底。
+                out = None
+                for extra in ([], ["--as", "user"]):
+                    try:
+                        out = run(base + extra, cwd=ROOT, label=None)
+                        break
+                    except Exception as e:
+                        log("  ! 上传尝试失败（%s）：%s" % (
+                            "自动身份" if not extra else "user 身份", e))
+                if out is None:
+                    raise RuntimeError("飞书上传失败（自动身份与 user 身份均不可用）")
                 try:
                     data = json.loads(out[out.index("{"):])["data"]
                     result["feishu"] = data["url"]
